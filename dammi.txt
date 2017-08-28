@@ -1,0 +1,132 @@
+// Ausschnitt :Modelleisnbahn Projekt in C micro.
+int main(void)
+{
+	
+	#if defined(UART)
+		uart_init();
+	#endif	
+
+	RESET_RESET_SOURCE(); // Clear Reset Status Register (WDRF,BORF,EXTRF,PORF)
+	  
+	bFrediVersion = FREDI_VERSION_ANALOG;	
+	  
+	//bSpdCnt = 0;
+	
+	rSlotInit();
+	rSlot1State = 0;
+	rSlot2State = 0;
+	rSlot3State = 0;
+	rSlot4State = 0;
+	//setUnconnectAll();
+	
+	// eeprom daten in rslot lesen
+	if(rSlot[0].adr == 0) {
+		rSlot[0].adr		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R1_LOCO_LB]);
+		rSlot[0].adr2		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R1_LOCO_HB]);
+		rSlot[0].stat		= eeprom_read_byte(&abEEPROM[EEPROM_R1_STAT]);
+	}
+	if(rSlot[1].adr == 0) {
+		rSlot[1].adr		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R2_LOCO_LB]);
+		rSlot[1].adr2		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R2_LOCO_HB]);
+		rSlot[1].stat		= eeprom_read_byte(&abEEPROM[EEPROM_R2_STAT]);		
+	}
+	if(rSlot[2].adr == 0) {
+		rSlot[2].adr		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R3_LOCO_LB]);
+		rSlot[2].adr2		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R3_LOCO_HB]);
+		rSlot[2].stat		= eeprom_read_byte(&abEEPROM[EEPROM_R3_STAT]);		
+	}
+	
+	if(rSlot[3].adr == 0) {
+		rSlot[3].adr		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R4_LOCO_LB]);
+		rSlot[3].adr2		= eeprom_read_byte(&abEEPROM[EEPROM_ADR_R4_LOCO_HB]);
+		rSlot[3].stat		= eeprom_read_byte(&abEEPROM[EEPROM_R4_STAT]);
+	}
+	
+	initLocoNet(&RxBuffer) ;
+	#if defined(UART)
+		printf("Init Loconet \n");
+	#endif	
+		
+	//Regler
+	potAdcInit();	  
+		
+	//Keys
+	initKeys();
+
+	//Timer
+	//initTimer();
+
+	// switch LED 4
+	PORTC |= (1 << LED4);
+
+	//Timer
+		
+	TCNT0 = (byte) TICK_RELOAD ;
+	sbi(TIFR, TOV0) ;
+	sbi(TIMSK, TOIE0) ;
+	TCCR0 = (TCCR0 & 0xF8) | TIMER_PRESCALER_CODE ;
+	
+	sei();
+
+	//setUnconnectAll();
+	rSlotReconnect();
+
+	while (1)
+	{	
+		vProcessRxLoconetMessage();
+		vProcessKey();
+		vProcessRxLoconetMessage();
+		
+		vProcessAllPoti();
+		vProcessRxLoconetMessage();
+	}
+} // end of main
+
+void vProcessKey(void)
+{
+	//RICHT-G-1 = keyID = 1
+		if (bit_is_clear(PINC,0) && keyPressed == 0) { //LED1, Richtungstaste1
+			if(rSlot1State == 0) {
+				keyID = 1;
+				if(debounceCounter < debounceShort) {
+					debounceCounter++;
+				} else if (debounceCounter == debounceShort) {
+					vSetState(THR_STATE_ACQUIRE_LOCO_GET);
+					ch = 0;
+					sendLocoNetMove(0, 0);				
+					if(rSlot[0].adr != 0) {
+						rSlot1State = 1;
+						ch = 5;
+					}
+					debounceCounterKeyPressed(1,0,1);
+				}
+			} else {
+				keyID = 1;
+				if(debounceCounter < debounceMax) {
+					debounceCounter++;
+				} else if (debounceCounter == debounceMax) {
+					if(lastLED1State == 0) {
+						PORTA |= (1 << LED1);
+						rSlot[0].dirf |= 0x20;
+						sendLocoNetDirf(&rSlot[0]);
+						#if defined(UART)
+							printf("DIR R1 Rueckwaerts = %u \n", rSlot[0].dirf);
+						#endif
+						lastLED1State = 1;
+					} else if (lastLED1State == 1) {
+						PORTA &= ~(1 << LED1);
+						rSlot[0].dirf &= 0x00;
+						sendLocoNetDirf(&rSlot[0]);
+						#if defined(UART)
+							printf("DIR R1 Vorwaerts = %u \n", rSlot[0].dirf);
+						#endif
+						lastLED1State = 0;
+					}
+					debounceCounterKeyPressed(1,0,1);
+				}
+			}
+		} else if(bit_is_set(PINC,0) && keyID == 1) {
+			debounceCounterKeyPressed(0,0,0);
+		}
+	........
+}
